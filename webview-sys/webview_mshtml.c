@@ -82,6 +82,7 @@ WEBVIEW_API webview_t webview_new(
 #pragma comment(lib, "user32.lib")
 
 #define WM_WEBVIEW_DISPATCH (WM_APP + 1)
+#define WM_NOTIFY_CALLBACK (WM_APP + 2)
 
 typedef struct {
   IOleInPlaceFrame frame;
@@ -774,6 +775,9 @@ static LRESULT CALLBACK wndproc(HWND hwnd, UINT uMsg, WPARAM wParam,
     wv = (struct mshtml_webview *)((CREATESTRUCT *)lParam)->lpCreateParams;
     wv->priv.hwnd = hwnd;
     return EmbedBrowserObject(wv);
+  case WM_CLOSE:
+    ShowWindow(hwnd, SW_HIDE);
+    return 0;
   case WM_DESTROY:
     UnEmbedBrowserObject(wv);
     PostQuitMessage(0);
@@ -796,6 +800,11 @@ static LRESULT CALLBACK wndproc(HWND hwnd, UINT uMsg, WPARAM wParam,
     (*f)(wv, arg);
     return TRUE;
   }
+  case WM_NOTIFY_CALLBACK:
+    if (lParam == WM_LBUTTONDOWN) {
+      ShowWindow(hwnd, SW_SHOW);
+      return 0;
+    }
   }
   return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
@@ -887,6 +896,16 @@ int webview_init(struct mshtml_webview *wv) {
     return -1;
   }
 
+  NOTIFYICONDATAW data = {0};
+  data.cbSize = sizeof(NOTIFYICONDATAW);
+  data.hIcon = wc.hIcon ? wc.hIcon : LoadIconW(NULL, MAKEINTRESOURCE(IDI_APPLICATION));
+  data.hWnd = wv->priv.hwnd;
+  data.uCallbackMessage = WM_NOTIFY_CALLBACK;
+  data.uFlags = NIF_MESSAGE | NIF_ICON;
+  if (!Shell_NotifyIconW(NIM_ADD, &data)) {
+    return -1;
+  }
+
   SetWindowLongPtr(wv->priv.hwnd, GWLP_USERDATA, (LONG_PTR)wv);
   if (wv->frameless) 
   {
@@ -912,6 +931,16 @@ WEBVIEW_API int webview_loop(webview_t w, int blocking) {
   }
   switch (msg.message) {
   case WM_QUIT:
+    {
+      NOTIFYICONDATAW data = {0};
+      data.cbSize = sizeof(NOTIFYICONDATAW);
+      data.hWnd = wv->priv.hwnd;
+      if (!Shell_NotifyIconW(NIM_DELETE, &data)) {
+        fprintf(stderr, "failed to remove notify icon\n");
+        fflush(stderr);
+      }
+    }
+
     if (wv->title != NULL)
     {
       SysFreeString(wv->title);
