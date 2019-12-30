@@ -1284,6 +1284,12 @@ WEBVIEW_API void webview_dialog(webview_t w,
   }
 }
 
+WEBVIEW_API void webview_hide(webview_t w) {
+  struct mshtml_webview* wv = (struct mshtml_webview*)w;
+  HWND hWnd = wv->priv.hwnd;
+  ShowWindow(hWnd, SW_HIDE);
+}
+
 WEBVIEW_API void webview_exit(webview_t w) {
   struct mshtml_webview* wv = (struct mshtml_webview*)w;
   if (wv->title != NULL)

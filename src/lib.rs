@@ -365,6 +365,10 @@ impl<'a, T> WebView<'a, T> {
         self.exit();
     }
 
+    pub fn hide(&mut self) {
+        unsafe { webview_hide(self.inner) }
+    }
+
     /// Gracefully exits the webview
     pub fn exit(&mut self) {
         unsafe { webview_exit(self.inner) }
