@@ -813,7 +813,11 @@ static LRESULT CALLBACK wndproc(HWND hwnd, UINT uMsg, WPARAM wParam,
   L"Software\\Microsoft\\Internet "                                            \
    "Explorer\\Main\\FeatureControl\\FEATURE_BROWSER_EMULATION"
 
-static int webview_fix_ie_compat_mode() {
+#define WEBVIEW_KEY_FEATURE_GPU_RENDERING                                      \
+  L"Software\\Microsoft\\Internet "                                            \
+   "Explorer\\Main\\FeatureControl\\FEATURE_GPU_RENDERING"
+
+static int webview_ie_feature_control() {
   HKEY hKey;
   DWORD ie_version = 11000;
   WCHAR appname[MAX_PATH + 1];
@@ -834,6 +838,17 @@ static int webview_fix_ie_compat_mode() {
     return -1;
   }
   RegCloseKey(hKey);
+  if (RegCreateKeyW(HKEY_CURRENT_USER, WEBVIEW_KEY_FEATURE_GPU_RENDERING,
+                    &hKey) != ERROR_SUCCESS) {
+    return -1;
+  }
+  DWORD val = 1;
+  if (RegSetValueExW(hKey, p, 0, REG_DWORD, (const BYTE*) &val,
+                     sizeof(val)) != ERROR_SUCCESS) {
+    RegCloseKey(hKey);
+    return -1;
+  }
+  RegCloseKey(hKey);
   return 0;
 }
 
@@ -845,7 +860,7 @@ int webview_init(struct mshtml_webview *wv) {
   RECT rect;
   HRESULT oleInitCode;
 
-  if (webview_fix_ie_compat_mode() < 0) {
+  if (webview_ie_feature_control() < 0) {
     return -1;
   }
 
