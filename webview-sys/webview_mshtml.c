@@ -11,6 +11,12 @@
 
 #include <stdio.h>
 
+// For GCC.
+#ifndef DPI_AWARENESS_CONTEXT_SYSTEM_AWARE
+DECLARE_HANDLE(DPI_AWARENESS_CONTEXT);
+#define DPI_AWARENESS_CONTEXT_SYSTEM_AWARE ((DPI_AWARENESS_CONTEXT)-2)
+#endif
+
 struct webview_priv {
   HWND hwnd;
   IOleObject **browser;
@@ -115,6 +121,9 @@ typedef struct {
   _IServiceProviderEx provider;
 } _IOleClientSiteEx;
 
+typedef DPI_AWARENESS_CONTEXT (WINAPI *FnSetThreadDpiAwarenessContext)(DPI_AWARENESS_CONTEXT);
+typedef BOOL (WINAPI *FnSetProcessDPIAware)();
+
 #ifdef __cplusplus
 #define iid_ref(x) &(x)
 #define iid_unref(x) *(x)
@@ -213,6 +222,30 @@ JS_Invoke(IDispatch FAR *This, DISPID dispIdMember, REFIID riid, LCID lcid,
 static IDispatchVtbl ExternalDispatchTable = {
     JS_QueryInterface, JS_AddRef,        JS_Release, JS_GetTypeInfoCount,
     JS_GetTypeInfo,    JS_GetIDsOfNames, JS_Invoke};
+
+static BOOL EnableDpiAwareness() {
+    // Use SetThreadDpiAwarenessContext if it's available (Windows 10).
+    //
+    // Use "SYSTEM_AWARE" because we haven't figure out how to make the browser
+    // control properly handle DPI changes.
+    HMODULE libUser32 = GetModuleHandleW(L"user32.dll");
+    if (libUser32) {
+        FnSetThreadDpiAwarenessContext SetThreadDpiAwarenessContext =
+            (FnSetThreadDpiAwarenessContext) GetProcAddress(libUser32, "SetThreadDpiAwarenessContext");
+        if(SetThreadDpiAwarenessContext != NULL) {
+            if (SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE) != NULL) {
+                return TRUE;
+            }
+        }
+        // Otherwise fallback to SetProcessDPIAware. GCC can't handle the linking, so we use `GetProcAddress` too.
+        FnSetProcessDPIAware SetProcessDPIAware =
+          (FnSetProcessDPIAware) GetProcAddress(libUser32, "SetProcessDPIAware");
+        if(SetProcessDPIAware != NULL) {
+          return SetProcessDPIAware();
+        }
+    }
+    return FALSE;
+}
 
 static ULONG STDMETHODCALLTYPE Site_AddRef(IOleClientSite FAR *This) {
   return 1;
@@ -425,7 +458,7 @@ static HRESULT STDMETHODCALLTYPE UI_ShowContextMenu(
 static HRESULT STDMETHODCALLTYPE
 UI_GetHostInfo(IDocHostUIHandler FAR *This, DOCHOSTUIINFO __RPC_FAR *pInfo) {
   pInfo->cbSize = sizeof(DOCHOSTUIINFO);
-  pInfo->dwFlags = DOCHOSTUIFLAG_NO3DBORDER;
+  pInfo->dwFlags = DOCHOSTUIFLAG_NO3DBORDER | DOCHOSTUIFLAG_DPI_AWARE;
   pInfo->dwDoubleClick = DOCHOSTUIDBLCLK_DEFAULT;
   return S_OK;
 }
@@ -612,6 +645,7 @@ static void UnEmbedBrowserObject(webview_t w) {
     wv->priv.browser = NULL;
   }
 }
+
 
 static int EmbedBrowserObject(webview_t w) {
   struct mshtml_webview* wv = (struct mshtml_webview*)w;
@@ -873,6 +907,9 @@ int webview_init(struct mshtml_webview *wv) {
   if (oleInitCode != S_OK && oleInitCode != S_FALSE) {
     return -1;
   }
+  // Return value not checked. If this function fails, simply continue without
+  // high DPI support.
+  EnableDpiAwareness();
   ZeroMemory(&wc, sizeof(WNDCLASSEX));
   wc.cbSize = sizeof(WNDCLASSEX);
   wc.hInstance = hInstance;
@@ -888,10 +925,15 @@ int webview_init(struct mshtml_webview *wv) {
     style &= ~(WS_SYSMENU | WS_CAPTION | WS_MINIMIZEBOX | WS_MAXIMIZEBOX);
   }
 
+  // Get DPI.
+  HDC screen = GetDC(0);
+  int DPI = GetDeviceCaps(screen, LOGPIXELSX);
+  ReleaseDC(0, screen);
+
   rect.left = 0;
   rect.top = 0;
-  rect.right = wv->width;
-  rect.bottom = wv->height;
+  rect.right = MulDiv(wv->width, DPI, 96);
+  rect.bottom = MulDiv(wv->height, DPI, 96);
   AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, 0);
 
   GetClientRect(GetDesktopWindow(), &clientRect);
