@@ -107,6 +107,7 @@ public:
         WNDCLASSEX wc;
         ZeroMemory(&wc, sizeof(WNDCLASSEX));
         wc.cbSize = sizeof(WNDCLASSEX);
+        wc.hIcon = LoadIconW(hInstance, L"APP_ICON");
         wc.hInstance = hInstance;
         wc.lpfnWndProc = WebviewWndProc;
         wc.lpszClassName = L"webview";

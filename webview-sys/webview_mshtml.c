@@ -912,6 +912,7 @@ int webview_init(struct mshtml_webview *wv) {
   EnableDpiAwareness();
   ZeroMemory(&wc, sizeof(WNDCLASSEX));
   wc.cbSize = sizeof(WNDCLASSEX);
+  wc.hIcon = LoadIconW(hInstance, L"APP_ICON");
   wc.hInstance = hInstance;
   wc.lpfnWndProc = wndproc;
   wc.lpszClassName = classname;
